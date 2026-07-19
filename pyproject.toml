@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yta"
+version = "0.1.0"
+description = "Semantic search over YouTube transcripts: ask a question, get the timestamped moment."
+requires-python = ">=3.10"
+dependencies = [
+    "sentence-transformers>=3.0",
+    "youtube-transcript-api>=1.0",
+    "google-genai>=1.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-dotenv>=1.0",
+    "yt-dlp>=2025.1.1",
+    "fastembed>=0.7",
+]
+
+[project.scripts]
+yta = "yta.cli:main"
+
+[tool.setuptools]
+packages = ["yta"]
+
+[tool.setuptools.package-data]
+yta = ["static/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "RET", "ARG"]
+
+[tool.ruff.lint.per-file-ignores]
+# Mocks accept-and-ignore real signatures; the test bootstrap must set
+# YTA_DB_PATH before any yta import, so imports cannot be at the top.
+"tests/*" = ["ARG001", "ARG002", "E402"]
