@@ -9,12 +9,18 @@ force cosine scan over a few thousand chunks is fast (<10ms), so no external
 vector store is needed.
 """
 
+import math
+import re
 import sqlite3
 from dataclasses import dataclass
 
 import numpy as np
 
 from . import config
+
+# Weight of exact-word matches relative to cosine similarity in search().
+# Rare terms (names, jargon) get most of this; common words nearly none.
+KEYWORD_BOOST = 0.3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS videos (
@@ -238,12 +244,42 @@ def recently_attempted_ids(conn: sqlite3.Connection, within_days: int) -> set[st
     return {row[0] for row in cur.fetchall()}
 
 
+def _keyword_bonus(query_text: str, texts: list[str]) -> np.ndarray:
+    """Rarity-weighted exact-word bonus per chunk, in [0, KEYWORD_BOOST].
+
+    Semantic embeddings are weak on rare proper nouns ("kavana"): similar-
+    sounding words score alike. A literal occurrence of a rare query word is
+    strong evidence, so it is rewarded in proportion to its rarity (IDF-style);
+    ubiquitous words contribute nearly nothing.
+    """
+    tokens = set(re.findall(r"[^\W\d_]{3,}", query_text.lower()))
+    n = len(texts)
+    if not tokens or n < 2:
+        return np.zeros(n)
+
+    lowered = [t.lower() for t in texts]
+    weights = {}
+    for tok in tokens:
+        df = sum(1 for txt in lowered if tok in txt)
+        if df:
+            weights[tok] = math.log((n + 1) / (df + 1)) / math.log(n + 1)
+    if not weights:
+        return np.zeros(n)
+
+    total = sum(weights.values())
+    bonus = np.array(
+        [sum(w for tok, w in weights.items() if tok in txt) for txt in lowered]
+    )
+    return KEYWORD_BOOST * bonus / total
+
+
 def search(
     conn: sqlite3.Connection,
     query_embedding: np.ndarray,
     top_k: int = 5,
+    query_text: str | None = None,
 ) -> list[SearchHit]:
-    """Brute-force cosine similarity over all stored chunk embeddings."""
+    """Hybrid search: cosine similarity plus an exact-word rarity bonus."""
     cur = conn.execute(
         """SELECT c.text, c.start, c.end, c.embedding,
                   v.id, v.title, v.url
@@ -259,6 +295,8 @@ def search(
     q = query_embedding.astype(np.float32)
     # Embeddings are L2-normalized at encode time, so dot product == cosine.
     scores = matrix @ q
+    if query_text:
+        scores = scores + _keyword_bonus(query_text, [r[0] for r in rows])
 
     order = np.argsort(scores)[::-1][:top_k]
     hits = []

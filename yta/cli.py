@@ -128,7 +128,14 @@ def _cmd_sync(_args) -> int:
 def _cmd_import(args) -> int:
     from . import ingest
 
-    text = Path(args.file).read_text(encoding="utf-8")
+    if args.file == "-":
+        print(
+            "Paste the transcript, then press Ctrl+Z and Enter to finish:",
+            file=sys.stderr,
+        )
+        text = sys.stdin.read()
+    else:
+        text = Path(args.file).read_text(encoding="utf-8")
     info = ingest.add_manual_transcript(
         text, title=args.title, embedder=Embedder(), url=args.url
     )
@@ -251,8 +258,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("sync", help="Index missing videos from followed channels")
     p.set_defaults(func=_cmd_sync)
 
-    p = sub.add_parser("import", help="Import a transcript from a text file")
-    p.add_argument("file", help="Path to a .txt transcript (optionally '[MM:SS] text' lines)")
+    p = sub.add_parser("import", help="Import a transcript from a file or paste")
+    p.add_argument("file", help="Path to a .txt/.srt/.vtt transcript, or '-' to paste via stdin")
     p.add_argument("--title", required=True, help="Video/transcript title")
     p.add_argument("--url", help="Optional video link")
     p.set_defaults(func=_cmd_import)

@@ -88,7 +88,7 @@ def ask(
             return []  # empty library: skip loading the embedding model
         db.check_embedding_model(conn, embedder.model_name)
         q_vec = embedder.encode([question])[0]
-        hits = db.search(conn, q_vec, top_k=top_k)
+        hits = db.search(conn, q_vec, top_k=top_k, query_text=question)
         # Approximate each video's duration (last chunk end) so callers can
         # show where in the video a moment falls.
         durations = dict(

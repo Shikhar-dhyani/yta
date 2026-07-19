@@ -317,7 +317,7 @@
 
     <div class="panel">
       <h2>Import transcripts</h2>
-      <p class="hint">Works anytime — even while YouTube fetching is blocked. Upload subtitle files (.srt, .vtt) or text files; timestamps are read automatically. Or paste text below (lines can start with a timestamp like <code>[2:10] the text</code>).</p>
+      <p class="hint">Works anytime — even while YouTube fetching is blocked. Upload subtitle files (.srt, .vtt) or text files, or paste a transcript below with its title. Tip: on any YouTube video, expand the description and press "Show transcript" — copy that panel and paste it here; timestamps are picked up automatically.</p>
       <div class="row" style="margin-bottom:14px">
         <input id="manual-files" type="file" multiple accept=".txt,.srt,.vtt,.text">
         <button id="files-btn" type="button" onclick="importFiles()">Upload files</button>
@@ -327,7 +327,7 @@
           <input id="manual-title" type="text" placeholder="Title" required>
           <input id="manual-url" type="text" placeholder="Video link (optional)">
         </div>
-        <textarea id="manual-text" placeholder="Paste the transcript…" required></textarea>
+        <textarea id="manual-text" placeholder="Paste the transcript here — plain text, [2:10]-prefixed lines, or a copy of YouTube's transcript panel" required></textarea>
         <div class="row"><button id="manual-btn" type="submit">Import</button></div>
       </form>
       <div id="manual-msg" class="msg"></div>

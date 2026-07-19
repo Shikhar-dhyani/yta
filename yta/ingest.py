@@ -163,20 +163,54 @@ def _parse_subtitle(text: str) -> list[dict] | None:
     return snippets or None
 
 
+# YouTube's transcript panel sometimes copies timestamps in the spoken-out
+# accessibility form, glued straight into the text:
+#   "22 minutes, 53 secondsWhen he entered the room..."
+#   "1 hour, 46 minutes, 48 secondsposition right..."
+_VERBOSE_TS_RE = re.compile(
+    r"(?:(\d+)\s+hours?,\s+)?(\d+)\s+minutes?,\s+(\d+)\s+seconds?\s*"
+)
+
+
+def _normalize_verbose_timestamps(text: str) -> str:
+    """Turn spoken-out timestamps into '[H:MM:SS]' line anchors."""
+
+    def repl(m: re.Match) -> str:
+        h, mnt, sec = int(m.group(1) or 0), int(m.group(2)), int(m.group(3))
+        total = h * 3600 + mnt * 60 + sec
+        hh, rem = divmod(total, 3600)
+        mm, ss = divmod(rem, 60)
+        stamp = f"{hh}:{mm:02d}:{ss:02d}" if hh else f"{mm}:{ss:02d}"
+        return f"\n[{stamp}] "
+
+    return _VERBOSE_TS_RE.sub(repl, text)
+
+
 def _chunk_plain_text(text: str) -> list[dict]:
     """Chunk manual text. Honors '[H:MM:SS] ...' / 'M:SS ...' line prefixes.
 
     Lines with a leading timestamp become anchored chunks; untimestamped text
     is grouped into ~CHUNK_TARGET_CHARS chunks with start=None.
     """
+    text = _normalize_verbose_timestamps(text)
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     timestamped = [(utils.parse_timestamp(ln), ln) for ln in lines]
 
     if any(ts is not None for ts, _ in timestamped):
         # Treat each timestamped line as a snippet; carry timestamps through.
+        # YouTube's own transcript panel copies timestamps on their own line
+        # ("0:05" then the text below) — such lines stamp the next text line
+        # instead of becoming junk text themselves.
         snippets = []
+        pending_ts = None
         for ts, ln in timestamped:
             clean = re.sub(r"^\s*\[?\s*\d{1,2}:\d{2}(?::\d{2})?\s*\]?\s*", "", ln)
+            if ts is not None and not clean:
+                pending_ts = ts
+                continue
+            if ts is None and pending_ts is not None:
+                ts = pending_ts
+            pending_ts = None
             snippets.append({"text": clean or ln, "start": ts, "duration": 0})
         # Untimestamped lines inherit the previous line's timestamp.
         last = None

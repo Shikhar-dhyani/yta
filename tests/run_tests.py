@@ -95,7 +95,30 @@ def test_subtitles():
     s = ingest._parse_subtitle(vtt)
     assert len(s) == 1 and s[0]["text"] == "hi there"  # dup dropped, tags stripped
     assert ingest._parse_subtitle("plain text, no cues") is None
-    ok("SRT/VTT parsing + plain-text fallback")
+    # YouTube transcript-panel pastes: verbose "22 minutes, 48 seconds" stamps
+    verbose = ("22 minutes, 48 secondsOne god brother named Kavana told us. "
+               "1 hour, 2 minutes, 5 secondslater he was smiling.")
+    chunks = ingest._chunk_plain_text(verbose)
+    assert chunks[0]["start"] == 22 * 60 + 48
+    assert "seconds" not in chunks[0]["text"]
+    # ...and numeric timestamp-on-own-line pastes
+    chunks = ingest._chunk_plain_text("0:05\nhello world\n2:10\nmore text")
+    assert chunks[0]["start"] == 5 and "0:05" not in chunks[0]["text"]
+    ok("SRT/VTT parsing + YouTube-panel pastes (verbose & numeric stamps)")
+
+
+def test_keyword_bonus():
+    texts = [
+        "the main problem in Kaluga is what Brahmanas fell",   # similar-sounding
+        "one of his god brothers his holiness Kavana told us", # exact rare match
+        "everybody was dancing and sweating at the festival",
+    ]
+    bonus = db._keyword_bonus("which video contains about kavana", texts)
+    assert bonus[1] > bonus[0] and bonus[1] > bonus[2], bonus
+    assert bonus.max() <= db.KEYWORD_BOOST + 1e-9
+    # no query words present anywhere -> all zeros
+    assert db._keyword_bonus("zzz qqq", texts).sum() == 0
+    ok("hybrid search: rare exact word outranks similar-sounding text")
 
 
 def test_model_guard():
@@ -223,6 +246,7 @@ if __name__ == "__main__":
         test_utils,
         test_ingest_and_ask,
         test_subtitles,
+        test_keyword_bonus,
         test_model_guard,
         test_import_block_abort,
         test_import_disguised_block,
