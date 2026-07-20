@@ -28,6 +28,10 @@ MODELS_CACHE = _ROOT / ".models_cache"
 # For an English-only library, all-MiniLM-L6-v2 (~90MB) is smaller and faster.
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
 
+# Optional cross-encoder reranker for search results (empty = disabled).
+# e.g. YTA_RERANKER=jinaai/jina-reranker-v2-base-multilingual
+RERANKER_MODEL = os.getenv("YTA_RERANKER", "")
+
 # Gemini settings for the summary add-on.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")

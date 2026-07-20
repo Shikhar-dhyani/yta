@@ -153,7 +153,7 @@ def _cmd_ask(args) -> int:
         print(f"\n{i}. [{r['timestamp']}] {r['video_title']}  (score {r['score']:.2f})")
         if r["link"]:
             print(f"   {r['link']}")
-        print(f"   \"{r['text'][:220]}{'...' if len(r['text']) > 220 else ''}\"")
+        print(f"   \"{r['snippet']}\"")
 
     if args.summary:
         from .summarize import summarize
@@ -198,6 +198,17 @@ def _cmd_status(_args) -> int:
             print(f"YouTube block: last seen {mins} min ago — likely cleared.")
     else:
         print("YouTube block: none recorded.")
+    return 0
+
+
+def _cmd_reindex(_args) -> int:
+    from .maintenance import reindex_library
+
+    def progress(i, total, title):
+        print(f"[{i}/{total}] {title[:60]}", flush=True)
+
+    result = reindex_library(Embedder(), progress=progress)
+    print(f"Reindexed {len(result['videos'])} videos with the current embedding model.")
     return 0
 
 
@@ -275,6 +286,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("status", help="Library counts and YouTube block state")
     p.set_defaults(func=_cmd_status)
+
+    p = sub.add_parser("reindex",
+                       help="Rebuild all chunks/embeddings (e.g. after changing "
+                            "EMBEDDING_MODEL); keeps timestamps")
+    p.set_defaults(func=_cmd_reindex)
 
     p = sub.add_parser("delete", help="Remove a video and its chunks")
     p.add_argument("video_id")

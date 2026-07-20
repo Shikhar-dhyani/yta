@@ -11,6 +11,8 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 _TMP = tempfile.mkdtemp(prefix="yta-tests-")
 os.environ["YTA_DB_PATH"] = os.path.join(_TMP, "test.db")
+# Pre-set env vars win over .env values: keep tests hermetic.
+os.environ["YTA_RERANKER"] = ""
 
 from unittest.mock import patch  # noqa: E402
 from xml.etree.ElementTree import ParseError  # noqa: E402
@@ -30,7 +32,7 @@ class FakeEmbedder:
 
     model_name = "fake"
 
-    def encode(self, texts):
+    def encode(self, texts, is_query=False):
         out = []
         for t in texts:
             v = np.array(
@@ -105,6 +107,39 @@ def test_subtitles():
     chunks = ingest._chunk_plain_text("0:05\nhello world\n2:10\nmore text")
     assert chunks[0]["start"] == 5 and "0:05" not in chunks[0]["text"]
     ok("SRT/VTT parsing + YouTube-panel pastes (verbose & numeric stamps)")
+
+
+def test_noise_chunks_dropped():
+    chunks = [
+        {"text": "[Music] this", "start": 0, "end": 1},
+        {"text": "a real passage with plenty of meaningful words in it", "start": 2, "end": 3},
+    ]
+    kept = ingest._drop_noise_chunks(chunks)
+    assert len(kept) == 1 and kept[0]["start"] == 2
+    ok("noise chunks ('[Music] this') dropped at ingestion")
+
+
+def test_e5_prefixes_and_rerank():
+    # e5-family models require asymmetric prefixes; others must get none
+    e5 = search.Embedder("onnx:intfloat/multilingual-e5-large")
+    assert e5._prep_texts(["hello"], is_query=True) == ["query: hello"]
+    assert e5._prep_texts(["hello"], is_query=False) == ["passage: hello"]
+    plain = search.Embedder("onnx:paraphrase-multilingual-MiniLM-L12-v2")
+    assert plain._prep_texts(["hello"], is_query=True) == ["hello"]
+
+    # rerank: cross-encoder ordering wins over retrieval order
+    class StubReranker:
+        def scores(self, question, texts):
+            return [2.0 if "kavana" in t else -2.0 for t in texts]
+
+    hits = [
+        db.SearchHit("v1", "t", None, 0, 1, "the kaluga passage", 0.9),
+        db.SearchHit("v2", "t", None, 5, 6, "his holiness kavana told us", 0.5),
+    ]
+    out = search._rerank_hits(StubReranker(), "kavana", hits, top_k=2)
+    assert out[0].video_id == "v2" and out[0].score > 0.8
+    assert out[1].score < 0.2
+    ok("e5 prefixes applied; reranker reorders and rescales scores")
 
 
 def test_keyword_bonus():
@@ -190,6 +225,42 @@ def test_channel_sync():
     ok("channel sync: adds missing videos, re-sync fetches nothing")
 
 
+def test_reindex_preserves_timestamps():
+    from yta.maintenance import reindex_library
+
+    class EmbB(FakeEmbedder):
+        model_name = "fake-b"
+
+    conn = db.connect(DB)
+    starts_before = dict(conn.execute(
+        "SELECT video_id, MIN(start) FROM chunks "
+        "WHERE start IS NOT NULL GROUP BY video_id"
+    ))
+    conn.close()
+    assert starts_before, "seeded library must have timestamped chunks"
+
+    result = reindex_library(EmbB(), db_path=DB)
+    assert result["videos"], "reindex must rebuild videos"
+
+    conn = db.connect(DB)
+    starts_after = dict(conn.execute(
+        "SELECT video_id, MIN(start) FROM chunks "
+        "WHERE start IS NOT NULL GROUP BY video_id"
+    ))
+    stamp = db.get_meta(conn, "embedding_model")
+    conn.close()
+    for vid, s in starts_before.items():
+        assert vid in starts_after and abs(starts_after[vid] - s) < 1, (
+            f"{vid}: timestamps lost in reindex"
+        )
+    assert stamp == "fake-b", "model stamp must update"
+    # restore the stamp for later tests
+    conn = db.connect(DB)
+    db.set_meta(conn, "embedding_model", "fake")
+    conn.close()
+    ok("reindex: rebuilds embeddings, preserves timestamps, restamps model")
+
+
 def test_api():
     from fastapi.testclient import TestClient
 
@@ -246,6 +317,8 @@ if __name__ == "__main__":
         test_utils,
         test_ingest_and_ask,
         test_subtitles,
+        test_noise_chunks_dropped,
+        test_e5_prefixes_and_rerank,
         test_keyword_bonus,
         test_model_guard,
         test_import_block_abort,
@@ -253,6 +326,7 @@ if __name__ == "__main__":
         test_import_genuine_skips,
         test_skip_memory_cleared_on_success,
         test_channel_sync,
+        test_reindex_preserves_timestamps,
         test_api,
         test_single_add_records_block,
         test_status_robustness,

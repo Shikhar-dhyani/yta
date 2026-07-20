@@ -26,6 +26,19 @@ from .search import Embedder
 # has no transcript". ParseError: a throttled endpoint returns an empty 200.
 BLOCK_ERRORS = (RequestBlocked, IpBlocked, YouTubeRequestFailed, ParseError)
 
+# Chunks with fewer meaningful words than this are noise ("[Music] this")
+# that embeds badly and pollutes search results.
+MIN_CHUNK_WORDS = 5
+
+
+def _drop_noise_chunks(chunks: list[dict]) -> list[dict]:
+    """Remove chunks too short to be a meaningful, searchable passage."""
+
+    def words(c: dict) -> int:
+        return len(re.sub(r"\[[^\]]*\]", "", c["text"]).split())
+
+    return [c for c in chunks if words(c) >= MIN_CHUNK_WORDS]
+
 
 def record_block(db_path: str | None = None) -> None:
     """Remember when YouTube last blocked us, so status/UI can tell the user."""
@@ -253,7 +266,7 @@ def add_youtube_video(
     except BLOCK_ERRORS:
         record_block(db_path)  # single adds should show up in status too
         raise
-    chunks = _chunk_snippets(snippets)
+    chunks = _drop_noise_chunks(_chunk_snippets(snippets))
     if not chunks:
         raise ValueError(f"Transcript for {video_id} is empty.")
 
@@ -301,6 +314,7 @@ def add_manual_transcript(
         chunks = _chunk_snippets(subtitle_snippets)
     else:
         chunks = _chunk_plain_text(text)
+    chunks = _drop_noise_chunks(chunks)
     if not chunks:
         raise ValueError("No usable text found in the transcript.")
     embeddings = embedder.encode([c["text"] for c in chunks])

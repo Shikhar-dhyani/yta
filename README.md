@@ -121,7 +121,8 @@ Fully offline — mocks YouTube and the embedding model, uses a throwaway databa
 
 ## Notes & limits
 
-- Search is a brute-force cosine scan — plenty fast for a personal DB (thousands of chunks). If it ever grows past ~100k chunks, swap in FAISS or sqlite-vec.
+- Search is hybrid: embedding cosine similarity plus a rarity-weighted exact-word bonus (so names and jargon rank correctly), optionally sharpened by a cross-encoder reranker (`YTA_RERANKER`). The brute-force scan is plenty fast for a personal DB (thousands of chunks); past ~100k chunks, swap in FAISS or sqlite-vec.
+- Switching `EMBEDDING_MODEL` (or the reranker finding better/worse) never mixes vector spaces: the DB records which model built it, and `yta reindex` rebuilds all chunks/embeddings under the new model while preserving timestamps.
 - YouTube fetching needs the video to have captions (manual or auto-generated). If none of your preferred `--lang` languages exist, it automatically falls back to whatever language the video has (manual captions preferred over auto-generated). For videos without any captions, use `import` with your own transcript.
 - Re-adding a video replaces its previous chunks (safe to re-run).
 - When YouTube rate-limits your network, the web UI shows a banner with how long ago the block happened and when it should clear (`yta status` shows the same in the terminal). Searching and manual import keep working throughout.

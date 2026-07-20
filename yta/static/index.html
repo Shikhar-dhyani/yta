@@ -463,7 +463,7 @@ function renderResults(data) {
         <div class="hit-score">${r.score.toFixed(2)}</div>
       </div>
       ${seek}
-      <p class="hit-text"><span class="cue">${esc(r.text)}</span></p>`;
+      <p class="hit-text"><span class="cue">${esc(r.snippet || r.text)}</span></p>`;
     frag.appendChild(el);
   }
   $("results").appendChild(frag);
