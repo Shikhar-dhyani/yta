@@ -133,7 +133,9 @@
   .hit-title {
     font-weight: 600; font-size: 14px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+    color: inherit; text-decoration: none;
   }
+  a.hit-title:hover { text-decoration: underline; }
   .hit-score { font: 500 12px/1 var(--mono); color: var(--text-dim); flex: none; }
   .seek { height: 14px; display: flex; align-items: center; margin: 6px 0 10px; }
   .seek .track {
@@ -374,6 +376,13 @@ async function refreshStatus() {
     } else {
       el.classList.add("hidden");
     }
+    const sb = $("sync-btn");
+    if (sb) {
+      sb.disabled = s.sync_running;
+      if (!s.sync_running && sb.textContent === "Syncing…") {
+        sb.textContent = "Sync now";
+      }
+    }
   } catch (e) { /* server briefly unavailable; banner stays as-is */ }
 }
 refreshStatus();
@@ -459,7 +468,9 @@ function renderResults(data) {
     el.innerHTML = `
       <div class="hit-top">
         ${time}
-        <div class="hit-title">${esc(r.video_title)}</div>
+        ${r.video_url
+          ? `<a class="hit-title" href="${esc(r.video_url)}" target="_blank" rel="noopener">${esc(r.video_title)}</a>`
+          : `<div class="hit-title">${esc(r.video_title)}</div>`}
         <div class="hit-score">${r.score.toFixed(2)}</div>
       </div>
       ${seek}

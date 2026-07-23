@@ -1,9 +1,19 @@
 """Embedding model wrapper + question answering over the chunk store."""
 
 import re
+import warnings
 from dataclasses import asdict
 
 import numpy as np
+
+# fastembed changed multilingual-e5-large's default pooling from CLS to mean.
+# Mean pooling is correct for e5 models (matches training). All embeddings in
+# this codebase use the current fastembed, so pooling is consistent throughout.
+warnings.filterwarnings(
+    "ignore",
+    message=".*multilingual-e5-large.*mean pooling.*",
+    category=UserWarning,
+)
 
 from . import config, db, utils
 
@@ -160,7 +170,7 @@ def ask(
             return []  # empty library: skip loading the embedding model
         db.check_embedding_model(conn, embedder.model_name)
         q_vec = embedder.encode([question], is_query=True)[0]
-        candidates = max(20, top_k * 4) if reranker else top_k
+        candidates = max(30, top_k * 6) if reranker else top_k
         hits = db.search(conn, q_vec, top_k=candidates, query_text=question)
         if reranker:
             hits = _rerank_hits(reranker, question, hits, top_k)

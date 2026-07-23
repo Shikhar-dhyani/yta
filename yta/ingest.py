@@ -176,6 +176,19 @@ def _parse_subtitle(text: str) -> list[dict] | None:
     return snippets or None
 
 
+# YouTube's transcript panel copies each line as {M:SS}{verbose_label}{text}
+# with no separators, e.g. "1:551 minute, 55 secondsMany devotees...".
+# The regex must be anchored at line-start so we strip the verbose label
+# before _normalize_verbose_timestamps runs — otherwise its leftmost-match
+# rule grabs the concatenated number ("551") as the minutes value, producing
+# wildly wrong timestamps like "9:11:55" for an 8-minute video.
+_YT_PANEL_LINE_RE = re.compile(
+    r"^(\d{1,2}:\d{2}(?::\d{2})?)"  # compact M:SS or H:MM:SS (keep as anchor)
+    r"(?:\d+\s+hours?,\s+)?"         # optional verbose hours  (discard)
+    r"(?:\d+\s+minutes?,\s+)?"       # optional verbose minutes (discard)
+    r"\d+\s+seconds?\s*"             # verbose seconds          (discard)
+)
+
 # YouTube's transcript panel sometimes copies timestamps in the spoken-out
 # accessibility form, glued straight into the text:
 #   "22 minutes, 53 secondsWhen he entered the room..."
@@ -183,6 +196,23 @@ def _parse_subtitle(text: str) -> list[dict] | None:
 _VERBOSE_TS_RE = re.compile(
     r"(?:(\d+)\s+hours?,\s+)?(\d+)\s+minutes?,\s+(\d+)\s+seconds?\s*"
 )
+
+
+def _strip_yt_panel_verbose(text: str) -> str:
+    """Convert YouTube panel lines from M:SS{verbose}{text} to [M:SS] text.
+
+    Only fires when the verbose label immediately follows the compact stamp
+    (no space), which is the YouTube transcript-panel export format.
+    Normal lines and already-bracketed stamps are passed through unchanged.
+    """
+    result = []
+    for line in text.splitlines():
+        m = _YT_PANEL_LINE_RE.match(line)
+        if m:
+            result.append(f"[{m.group(1)}] {line[m.end():]}")
+        else:
+            result.append(line)
+    return "\n".join(result)
 
 
 def _normalize_verbose_timestamps(text: str) -> str:
@@ -205,6 +235,7 @@ def _chunk_plain_text(text: str) -> list[dict]:
     Lines with a leading timestamp become anchored chunks; untimestamped text
     is grouped into ~CHUNK_TARGET_CHARS chunks with start=None.
     """
+    text = _strip_yt_panel_verbose(text)
     text = _normalize_verbose_timestamps(text)
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     timestamped = [(utils.parse_timestamp(ln), ln) for ln in lines]
